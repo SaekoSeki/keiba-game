@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>シンプル競馬ゲーム(3連単・3連複対応)</title>
+
+  <style>
+    /* ===== ページ全体のスタイル ===== */
+    body {
+      font-family: sans-serif;
+      background: #f0f8e8;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #2c5e1a;
+    }
+
+    /* ===== 予想エリア ===== */
+    #bet-area {
+      background: #fff;
+      
+      border: 2px solid #2c5e1a;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 20px auto;
+      max-width: 600px;
+      text-align: left;
+    }
+
+    #bet-area h2 {
+      margin-top: 0;
+      color: #2c5e1a;
+      font-size: 18px;
+    }
+
+    .bet-row {
+      margin: 8px 0;
+      font-size: 15px;
+    }
+
+    .bet-row label {
+      display: inline-block;
+      width: 130px;
+    }
+
+    select {
+      font-size: 15px;
+      padding: 4px;
+    }
+
+    /* ===== レース場(コース全体) ===== */
+    /* 直線コースではなく、楕円(競馬場風)のトラックを SVG で描く。 */
+    #race-track {
+      background: #d9efc1;
+      border: 4px solid #2c5e1a;
+      border-radius: 8px;
+      padding: 10px;
+      margin: 20px auto;
+      max-width: 900px;
+    }
+
+    /* SVG はレスポンシブに(横幅100%・高さは自動)。 */
+    #track-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* 走路(レーン)の線。白い点線で「コースっぽさ」を出す。 */
+    .lane-path {
+      fill: none;
+      stroke: #ffffff;
+      stroke-width: 1.5;
+      stroke-dasharray: 4 6;
+      opacity: 0.7;
+    }
+
+    /* スタート/ゴールのライン */
+    .finish-line {
+      stroke: #c0392b;
+      stroke-width: 3;
+    }
+
+    /* 馬の番号(常に上向きで読めるようにする) */
+    .horse-num {
+      font-size: 11px;
+      font-weight: bold;
+      fill: #234016;
+      text-anchor: middle;
+    }
+
+    /* 馬の絵文字(進行方向に合わせて反転・傾ける部分) */
+    .horse-emoji {
+      font-size: 22px;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    /* ===== スタートボタン ===== */
+    #start-btn {
+      font-size: 18px;
+      padding: 10px 30px;
+      background: #2c5e1a;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #start-btn:disabled {
+      background: #999;
+      cursor: not-allowed;
+    }
+
+    /* ===== 結果表示エリア ===== */
+    #result {
+      margin-top: 20px;
+      font-size: 20px;
+      min-height: 30px;
+    }
+
+    .winner {
+      font-size: 26px;
+      font-weight: bold;
+      color: #c0392b;
+    }
+
+    .ranking-list {
+      font-size: 16px;
+      color: #333;
+      margin-top: 10px;
+    }
+
+    /* 予想が当たった/外れたの表示 */
+    .hit {
+      color: #2c5e1a;
+      font-weight: bold;
+    }
+    .miss {
+      color: #888;
+    }
+
+    /* ===== 所持金エリア ===== */
+    #money-area {
+      font-size: 22px;
+      font-weight: bold;
+      color: #2c5e1a;
+      margin: 10px 0;
+    }
+    #balance {
+      color: #c0392b;
+    }
+
+    /* ===== 各馬のオッズ表 ===== */
+    .odds-table {
+      border-collapse: collapse;
+      margin: 8px 0;
+      font-size: 14px;
+      width: 100%;
+    }
+    .odds-table th,
+    .odds-table td {
+      border: 1px solid #b5d99c;
+      padding: 4px 8px;
+      text-align: left;
+    }
+    .odds-table th {
+      background: #d9efc1;
+    }
+    .odds-table .odds-val {
+      text-align: right;
+      font-weight: bold;
+      color: #c0392b;
+    }
+
+    /* ===== 賭け金入力 / オッズ表示 ===== */
+    .bet-amount {
+      width: 90px;
+      font-size: 15px;
+      padding: 4px;
+    }
+    .live-odds {
+      font-weight: bold;
+      color: #c0392b;
+    }
+    .payout-info {
+      color: #555;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    /* ===== 新しいオッズボタン ===== */
+    #refresh-btn {
+      font-size: 14px;
+      padding: 8px 16px;
+      background: #fff;
+      color: #2c5e1a;
+      border: 2px solid #2c5e1a;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    #refresh-btn:disabled {
+      color: #999;
+      border-color: #999;
+      cursor: not-allowed;
+    }
+
+    /* ============================================================ */
+    /* ===== ① QR参加 & ランキング まわりのスタイル ===== */
+    /* ============================================================ */
+
+    /* 上部の「参加者名」と「QRコード」を並べるパネル */
+    #lobby-area {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      background: #fff;
+      border: 2px solid #2c5e1a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 12px auto;
+      max-width: 600px;
+    }
+    #player-info {
+      font-size: 16px;
+      color: #234016;
+    }
+    #player-name {
+      font-weight: bold;
+      color: #c0392b;
+    }
+    #change-name-btn {
+      font-size: 12px;
+      margin-left: 8px;
+      padding: 2px 8px;
+      cursor: pointer;
+    }
+    /* ホスト用QR(参加者がスマホで読み取る) */
+    #qr-area {
+      text-align: center;
+      font-size: 12px;
+      color: #555;
+    }
+    #qr-img {
+      width: 120px;
+      height: 120px;
+      border: 4px solid #fff;
+      box-shadow: 0 0 0 1px #ccc;
+    }
+
+    /* ランキング表 */
+    #ranking-area {
+      background: #fff;
+      border: 2px solid #2c5e1a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 20px auto;
+      max-width: 600px;
+    }
+    #ranking-area h2 {
+      margin-top: 0;
+      color: #2c5e1a;
+      font-size: 18px;
+    }
+    .ranking-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 15px;
+    }
+    .ranking-table th,
+    .ranking-table td {
+      border: 1px solid #b5d99c;
+      padding: 6px 10px;
+      text-align: center;
+    }
+    .ranking-table th {
+      background: #d9efc1;
+    }
+    .ranking-table td.name-cell {
+      text-align: left;
+    }
+    /* 自分の行を目立たせる */
+    .ranking-table tr.me {
+      background: #fff7d6;
+      font-weight: bold;
+    }
+    .rank-medal {
+      font-size: 16px;
+    }
+    #ranking-status {
+      font-size: 13px;
+      color: #888;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>🐎 競馬ゲーム 🏁</h1>
+
+  <!-- ===== ① 参加者名 & QRコード(参加用) ===== -->
+  <!-- サーバありで開いたときだけ表示される。file://(サーバなし)では隠す。 -->
+  <div id="lobby-area" style="display:none;">
+    <div id="player-info">
+      参加者: <span id="player-name">-</span>
+      <button id="change-name-btn">名前を変える</button>
+    </div>
+    <div id="qr-area">
+      <!-- このサーバのURLを指すQR。スマホで読み取ると参加できる -->
+      <img id="qr-img" src="/qr" alt="参加用QRコード">
+      <div>📱 スマホで読み取って参加</div>
+    </div>
+  </div>
+
+  <!-- ===== 所持金表示 ===== -->
+  <div id="money-area">💰 所持金: <span id="balance">1000</span> 円</div>
+
+  <!-- ===== 予想エリア ===== -->
+  <div id="bet-area">
+    <h2>📝 予想を選んでください</h2>
+
+    <!-- 各馬の単勝オッズ(強さの目安。低いほど強い) -->
+    <div class="bet-row">
+      <strong>📊 各馬のオッズ</strong>(単勝・低いほど強い)
+    </div>
+    <table class="odds-table" id="odds-table"></table>
+
+    <hr>
+
+    <!-- 3連単:1着〜3着を順番通りに当てる -->
+    <div class="bet-row">
+      <strong>【3連単】</strong>(順番も当てる)
+    </div>
+    <div class="bet-row">
+      <label>1着予想:</label>
+      <select id="bet-1st"></select>
+    </div>
+    <div class="bet-row">
+      <label>2着予想:</label>
+      <select id="bet-2nd"></select>
+    </div>
+    <div class="bet-row">
+      <label>3着予想:</label>
+      <select id="bet-3rd"></select>
+    </div>
+    <div class="bet-row">
+      <label>賭け金:</label>
+      <input type="number" id="bet-trifecta-amount" class="bet-amount" value="100" min="0" step="100">円
+      &nbsp;オッズ: <span class="live-odds" id="trifecta-odds">－</span> 倍
+      <div class="payout-info">的中なら払戻し: <span id="trifecta-payout">－</span> 円</div>
+    </div>
+
+    <hr>
+
+    <!-- 3連複:3頭すべて当たればOK(順番は問わない) -->
+    <div class="bet-row">
+      <strong>【3連複】</strong>(3頭すべて当てればOK・順不同)
+    </div>
+    <div class="bet-row">
+      <label>3頭を選択:</label>
+      <select id="bet-trio-1"></select>
+      <select id="bet-trio-2"></select>
+      <select id="bet-trio-3"></select>
+    </div>
+    <div class="bet-row">
+      <label>賭け金:</label>
+      <input type="number" id="bet-trio-amount" class="bet-amount" value="100" min="0" step="100">円
+      &nbsp;オッズ: <span class="live-odds" id="trio-odds">－</span> 倍
+      <div class="payout-info">的中なら払戻し: <span id="trio-payout">－</span> 円</div>
+    </div>
+  </div>
+
+  <!-- レース場。ここに馬のレーンをJavaScriptで作る -->
+  <div id="race-track"></div>
+
+  <!-- スタートボタン -->
+  <button id="start-btn">スタート!</button>
+  <button id="refresh-btn">🔄 新しいオッズ</button>
+
+  <!-- 結果表示エリア -->
+  <div id="result"></div>
+
+  <!-- ===== ① 全参加者ランキング ===== -->
+  <!-- サーバありのときだけ表示。所持金の多い順に並ぶ。 -->
+  <div id="ranking-area" style="display:none;">
+    <h2>🏆 みんなのランキング(所持金の多い順)</h2>
+    <button id="ranking-btn">🔄 ランキングを更新</button>
+    <div id="ranking-table-wrap"></div>
+    <div id="ranking-status"></div>
+  </div>
+
+  <script>
+    // ============================================================
+    // ===== 設定 =====
+    // ============================================================
+
+    // 出場する馬の名前一覧。ここを増やすと馬の数が増える
+    const horseNames = [
+      '①🐎アカ',
+      '②🐴アオ',
+      '③🐎キイロ',
+      '④🐴ミドリ',
+      '⑤🐎シロ',
+      '⑥🐴クロ',
+      '⑦🐎ムラサキ',
+      '⑧🐴ピンク',
+      '⑨🐎オレンジ',
+      '⑩🐴チャイロ',
+      '⑪🐎ミズイロ',
+      '⑫🐴キンイロ'
+    ];
+
+    // ゴールまでの距離(%)。100%でゴール。
+    // 数字を大きくするほどレースが長く感じる(動く距離の上限)
+    const GOAL = 97;
+
+    // レースを更新する間隔(ミリ秒)。小さいほどなめらか
+    const TICK_MS = 50;
+
+    // 馬の最大スピード(0〜この値の間でランダムに進む)
+    // ※ 小さくするとレースが長くなり、見応えが出る
+    const MAX_SPEED = 0.6;
+
+    // ----- オッズ・お金の設定 -----
+
+    // ゲーム開始時の所持金(円)
+    const STARTING_MONEY = 1000;
+
+    // 控除率(20%)。払戻し率は 1 - TAKEOUT = 80%。
+    // 大きくするほどオッズ(倍率)が下がり、当たっても増えにくくなる。
+    const TAKEOUT = 0.20;
+
+    // オッズ(倍率)の下限。これより低い倍率にはしない。
+    const MIN_ODDS = 1.1;
+
+    // 馬の強さの範囲。強い馬ほど速く、オッズが低く(当たりやすく)なる。
+    const STRENGTH_MIN = 0.6;
+    const STRENGTH_MAX = 1.4;
+
+    // ----- ② トラック(楕円コース)の設定 -----
+    // SVG の表示領域の大きさ(viewBox)。中の座標系はこのサイズで考える。
+    const VIEW_W = 820;
+    const VIEW_H = 470;
+    // トラックの中心
+    const CX = 410;
+    const CY = 235;
+    // 直線部分の「半分の長さ」(中心から左右へ伸びる長さ)
+    const SX = 200;
+    // 一番内側のレーンの半径(楕円の上下方向のふくらみ)
+    const BASE_R = 46;
+    // レーンとレーンの間隔(これ×頭数ぶん外側へ広がる)
+    const LANE_GAP = 12;
+
+    // ============================================================
+    // ===== HTML要素を取得 =====
+    // ============================================================
+    const raceTrack = document.getElementById('race-track');
+    const startBtn = document.getElementById('start-btn');
+    const resultDiv = document.getElementById('result');
+
+    // 予想用のセレクトボックス(3連単)
+    const bet1stSel = document.getElementById('bet-1st');
+    const bet2ndSel = document.getElementById('bet-2nd');
+    const bet3rdSel = document.getElementById('bet-3rd');
+
+    // 予想用のセレクトボックス(3連複)
+    const betTrio1Sel = document.getElementById('bet-trio-1');
+    const betTrio2Sel = document.getElementById('bet-trio-2');
+    const betTrio3Sel = document.getElementById('bet-trio-3');
+
+    // オッズ・お金まわりのHTML要素
+    const oddsTable = document.getElementById('odds-table');
+    const balanceSpan = document.getElementById('balance');
+    const refreshBtn = document.getElementById('refresh-btn');
+    const trifectaAmountInput = document.getElementById('bet-trifecta-amount');
+    const trioAmountInput = document.getElementById('bet-trio-amount');
+    const trifectaOddsSpan = document.getElementById('trifecta-odds');
+    const trioOddsSpan = document.getElementById('trio-odds');
+    const trifectaPayoutSpan = document.getElementById('trifecta-payout');
+    const trioPayoutSpan = document.getElementById('trio-payout');
+
+    // ============================================================
+    // ===== 状態(レース中の情報) =====
+    // ============================================================
+
+    // 馬の情報を入れておく配列(位置やゴール済みフラグなど)
+    let horses = [];
+
+    // タイマーのID(レースを止めるときに使う)
+    let raceTimer = null;
+
+    // 現在の所持金(円)
+    let balance = STARTING_MONEY;
+
+    // レース開始時に確定させた賭けの内容(払戻し計算に使う)
+    // 例: { trifecta: {amount, odds, guess:[a,b,c]}, trio: {amount, odds, guess:[a,b,c]} }
+    let lockedBet = null;
+
+    // ============================================================
+    // ===== 予想セレクトボックスを馬の名前で埋める関数 =====
+    // ============================================================
+    function fillBetSelects() {
+      // すべてのセレクトボックスをまとめて扱う
+      const selects = [bet1stSel, bet2ndSel, bet3rdSel,
+                       betTrio1Sel, betTrio2Sel, betTrio3Sel];
+
+      // 各セレクトに馬の名前を <option> として追加
+      selects.forEach((sel, selIndex) => {
+        sel.innerHTML = ''; // 中身をクリア
+        horseNames.forEach((name, i) => {
+          const opt = document.createElement('option');
+          opt.value = i;        // 値は馬のインデックス番号
+          opt.textContent = name;
+          sel.appendChild(opt);
+        });
+        // 初期値を少しずつずらして見やすくする
+        sel.selectedIndex = selIndex % horseNames.length;
+      });
+    }
+
+    // ============================================================
+    // ===== オッズ計算まわりの関数 =====
+    // ============================================================
+
+    // 全馬の強さの合計
+    function totalStrength() {
+      return horses.reduce((sum, h) => sum + h.strength, 0);
+    }
+
+    // 確率(0〜1)からオッズ(倍率)を計算する。
+    // 払戻し率(1 - TAKEOUT)を掛けてから小数1桁に丸める。
+    // 確率が0や不正なときは null(賭けられない)を返す。
+    function oddsFromProb(prob) {
+      if (!prob || prob <= 0) return null;
+      let o = (1 / prob) * (1 - TAKEOUT);
+      o = Math.round(o * 10) / 10;   // 小数1桁に丸める
+      return Math.max(MIN_ODDS, o);
+    }
+
+    // 3連単(a→b→c の順)で決まる確率。Harvilleモデルで近似する。
+    //   1着がa、その残りから2着がb、さらに残りから3着がc になる確率。
+    function trifectaProb(a, b, c) {
+      // 同じ馬を複数選んでいたら不可能(確率0)
+      if (a === b || b === c || a === c) return 0;
+      const S = totalStrength();
+      const sa = horses[a].strength;
+      const sb = horses[b].strength;
+      const sc = horses[c].strength;
+      const p1 = sa / S;
+      const p2 = sb / (S - sa);
+      const p3 = sc / (S - sa - sb);
+      return p1 * p2 * p3;
+    }
+
+    // 3連複(a,b,c が順不同で上位3頭に入る)確率。
+    //   3頭の並び方6通りの3連単確率を足し合わせる。
+    function trioProb(a, b, c) {
+      if (a === b || b === c || a === c) return 0;
+      const perms = [
+        [a, b, c], [a, c, b], [b, a, c],
+        [b, c, a], [c, a, b], [c, b, a]
+      ];
+      return perms.reduce((sum, p) => sum + trifectaProb(p[0], p[1], p[2]), 0);
+    }
+
+    // 各馬の単勝オッズ表を作って表示する
+    function buildOddsTable() {
+      const S = totalStrength();
+      let html = '<tr><th>馬</th><th>単勝オッズ</th></tr>';
+      horses.forEach(h => {
+        const p = h.strength / S;            // この馬が1着になる確率
+        const o = oddsFromProb(p);
+        html += `<tr><td>${h.name}</td>` +
+                `<td class="odds-val">${o.toFixed(1)} 倍</td></tr>`;
+      });
+      oddsTable.innerHTML = html;
+    }
+
+    // 現在の選択内容から3連単・3連複のオッズと払戻し予想を更新する
+    function updateBetOdds() {
+      // ----- 3連単 -----
+      const a = Number(bet1stSel.value);
+      const b = Number(bet2ndSel.value);
+      const c = Number(bet3rdSel.value);
+      const tfOdds = oddsFromProb(trifectaProb(a, b, c));
+      const tfAmount = Number(trifectaAmountInput.value) || 0;
+      trifectaOddsSpan.textContent = tfOdds ? tfOdds.toFixed(1) : '－';
+      trifectaPayoutSpan.textContent =
+        tfOdds ? Math.floor(tfAmount * tfOdds).toLocaleString() : '－';
+
+      // ----- 3連複 -----
+      const t1 = Number(betTrio1Sel.value);
+      const t2 = Number(betTrio2Sel.value);
+      const t3 = Number(betTrio3Sel.value);
+      const trOdds = oddsFromProb(trioProb(t1, t2, t3));
+      const trAmount = Number(trioAmountInput.value) || 0;
+      trioOddsSpan.textContent = trOdds ? trOdds.toFixed(1) : '－';
+      trioPayoutSpan.textContent =
+        trOdds ? Math.floor(trAmount * trOdds).toLocaleString() : '－';
+    }
+
+    // 所持金の表示を更新する
+    function updateBalanceDisplay() {
+      balanceSpan.textContent = balance.toLocaleString();
+    }
+
+    // ============================================================
+    // ===== ② トラック(楕円コース)を描くための道具 =====
+    // ============================================================
+
+    // SVG用の要素を作るための小さな関数。
+    // (普通の document.createElement ではSVGはうまく描けないので専用の作り方を使う)
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    function svgNode(tag, attrs) {
+      const el = document.createElementNS(SVG_NS, tag);
+      for (const key in attrs) {
+        el.setAttribute(key, attrs[key]);
+      }
+      return el;
+    }
+
+    // 「スタジアム型(直線2本＋左右の半円)」のパスの文字列を作る。
+    //   これが馬の通る道(Waypoint/Spline のかわり)になる。
+    //   cx,cy: 中心 / sx: 直線の半分の長さ / r: 上下のふくらみ(半径)
+    function makeStadiumPath(cx, cy, sx, r) {
+      return [
+        'M', cx - sx, cy - r,                 // 左上(スタート地点)
+        'L', cx + sx, cy - r,                 // 上の直線を右へ
+        'A', r, r, 0, 0, 1, cx + sx, cy + r,  // 右のカーブを下へ(時計回り)
+        'L', cx - sx, cy + r,                 // 下の直線を左へ
+        'A', r, r, 0, 0, 1, cx - sx, cy - r,  // 左のカーブを上へ
+        'Z'                                    // 閉じる(1周)
+      ].join(' ');
+    }
+
+    // レーン番号(0が一番内側)から、そのレーンの半径を求める
+    function laneRadius(index) {
+      return BASE_R + index * LANE_GAP;
+    }
+
+    // 馬を、自分のレーン上の今の位置(position)へ移動させる。
+    //   position(0〜100) を「1周の割合(0〜1)」に変換し、
+    //   パス上のその地点の座標を求めて馬を置く。
+    //   さらに少し先の点との角度から「進行方向」を計算し、
+    //   絵文字を進む向きへ向ける(カーブで自然に向きが変わる)。
+    function placeHorse(horse) {
+      const len = horse.pathLen;                 // このレーン1周の長さ
+      const frac = Math.min(horse.position, 100) / 100;  // 進んだ割合(0〜1)
+      const dist = len * frac;                   // パス上で何ピクセル進んだか
+      const p = horse.pathEl.getPointAtLength(dist);          // 今いる座標
+      const ahead = horse.pathEl.getPointAtLength(Math.min(len, dist + 2)); // 少し先の座標
+
+      const dx = ahead.x - p.x;
+      const dy = ahead.y - p.y;
+
+      // 右へ進んでいるか? 馬の絵文字はもともと「左向き」なので、
+      // 右へ進むときだけ左右反転(scale -1)して右を向かせる。
+      const goingRight = dx >= 0;
+      const flipX = goingRight ? -1 : 1;
+
+      // 上下方向の傾き。カーブで頭が上下に向く。急になりすぎないよう±35度に制限。
+      let tilt = Math.atan2(dy, Math.abs(dx)) * 180 / Math.PI;
+      if (tilt > 35) tilt = 35;
+      if (tilt < -35) tilt = -35;
+      // 左右反転しているときは回転が逆向きに見えるので符号を合わせる
+      const rot = (flipX === -1) ? -tilt : tilt;
+
+      // 馬全体をコース上の座標へ移動
+      horse.group.setAttribute('transform', `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`);
+      // 絵文字だけ反転＋傾ける(番号は上向きのまま読めるようにする)
+      horse.emojiEl.setAttribute('transform', `scale(${flipX},1) rotate(${rot.toFixed(1)})`);
+    }
+
+    // ============================================================
+    // ===== レース場を準備する関数(新しいオッズを引き直す) =====
+    //   馬ごとに強さ・レーン(楕円コース)を作り直し、オッズを表示する
+    // ============================================================
+    function prepareRace() {
+      // 前のレースの表示を消す
+      raceTrack.innerHTML = '';
+      resultDiv.innerHTML = '';
+      horses = [];
+
+      // --- SVG(コース全体の絵)を作る ---
+      const svg = svgNode('svg', {
+        id: 'track-svg',
+        viewBox: `0 0 ${VIEW_W} ${VIEW_H}`
+      });
+      // 先に画面へ入れておく。こうしないと一部ブラウザでは
+      // パスの長さ(getTotalLength)が正しく測れないことがある。
+      raceTrack.appendChild(svg);
+
+      const N = horseNames.length;
+      const outerR = laneRadius(N - 1);   // 一番外側レーンの半径
+      const innerR = laneRadius(0);       // 一番内側レーンの半径
+
+      // --- 走路(砂の部分)と内側の芝を描く ---
+      // 大きい楕円(砂色)を描いた上に、小さい楕円(芝色)を重ねると、
+      // ちょうどドーナツ状の「走路」が見える。
+      svg.appendChild(svgNode('path', {
+        d: makeStadiumPath(CX, CY, SX, outerR + 9),
+        fill: '#cdb892'   // 砂っぽい色
+      }));
+      svg.appendChild(svgNode('path', {
+        d: makeStadiumPath(CX, CY, SX, Math.max(10, innerR - 9)),
+        fill: '#8fcf6f'   // 内側の芝
+      }));
+
+      // --- スタート/ゴールのライン(上の直線の左端に赤い線) ---
+      svg.appendChild(svgNode('line', {
+        x1: CX - SX, y1: CY - innerR,
+        x2: CX - SX, y2: CY - outerR,
+        class: 'finish-line'
+      }));
+
+      // --- 馬の数だけレーン(走る道)と馬を作る ---
+      horseNames.forEach((name, index) => {
+        const r = laneRadius(index);
+
+        // このレーンのパス(馬が通る道)。計測にも使う。
+        const lanePath = svgNode('path', {
+          d: makeStadiumPath(CX, CY, SX, r),
+          class: 'lane-path'
+        });
+        svg.appendChild(lanePath);
+
+        // 馬の絵文字(🐎 か 🐴)を名前から判定
+        const animal = name.includes('🐴') ? '🐴' : '🐎';
+
+        // 馬のまとまり(<g>)。中に「番号」と「絵文字」を入れる。
+        const group = svgNode('g', { class: 'horse-group' });
+        // 番号(常に上向きで読める)
+        const numEl = svgNode('text', { class: 'horse-num', x: 0, y: -15 });
+        numEl.textContent = String(index + 1);
+        // 絵文字(進行方向に合わせて反転・傾ける)
+        const emojiEl = svgNode('text', { class: 'horse-emoji', x: 0, y: 0 });
+        emojiEl.textContent = animal;
+        group.appendChild(numEl);
+        group.appendChild(emojiEl);
+        svg.appendChild(group);
+
+        // この馬の強さをランダムに決める(STRENGTH_MIN〜STRENGTH_MAX)
+        const strength = STRENGTH_MIN + Math.random() * (STRENGTH_MAX - STRENGTH_MIN);
+
+        // 馬の情報を配列に保存しておく
+        horses.push({
+          index: index,            // 馬の番号(0始まり)
+          name: name,              // 馬の名前
+          group: group,            // 画面上の馬(まとまり)
+          emojiEl: emojiEl,        // 絵文字部分(向きを変える)
+          pathEl: lanePath,        // このレーンのパス
+          pathLen: lanePath.getTotalLength(), // 1周の長さ(あらかじめ計測)
+          strength: strength,      // 強さ(速さ・オッズの元になる)
+          position: 0,             // 現在の位置(0=スタート, 100=1周ぶん)
+          finished: false,         // ゴールしたかどうか
+          finishOrder: null        // 何着でゴールしたか(1,2,3,...)
+        });
+      });
+
+      // 馬をスタート地点に置く
+      horses.forEach(placeHorse);
+
+      // 新しい強さに合わせてオッズ表とベットのオッズを更新
+      buildOddsTable();
+      updateBetOdds();
+    }
+
+    // ============================================================
+    // ===== 馬の位置だけをスタートに戻す(強さ・オッズは変えない) =====
+    // ============================================================
+    function resetPositions() {
+      resultDiv.innerHTML = '';
+      horses.forEach(horse => {
+        horse.position = 0;
+        horse.finished = false;
+        horse.finishOrder = null;
+        placeHorse(horse);   // スタート地点(コースの先頭)に置き直す
+      });
+    }
+
+    // ============================================================
+    // ===== レースを開始する関数 =====
+    // ============================================================
+    function startRace() {
+      // ----- 賭け金とオッズを確定する(レース直前のオッズで固定) -----
+      const tfAmount = Math.max(0, Math.floor(Number(trifectaAmountInput.value) || 0));
+      const trAmount = Math.max(0, Math.floor(Number(trioAmountInput.value) || 0));
+      const totalBet = tfAmount + trAmount;
+
+      // 所持金が足りなければレースを始めない
+      if (totalBet > balance) {
+        alert(`所持金が足りません。\n所持金: ${balance.toLocaleString()}円 / 賭け金合計: ${totalBet.toLocaleString()}円`);
+        return;
+      }
+
+      // 現在の選択からオッズを計算して固定する
+      const tfGuess = [Number(bet1stSel.value), Number(bet2ndSel.value), Number(bet3rdSel.value)];
+      const trGuess = [Number(betTrio1Sel.value), Number(betTrio2Sel.value), Number(betTrio3Sel.value)];
+      lockedBet = {
+        trifecta: { amount: tfAmount, odds: oddsFromProb(trifectaProb(tfGuess[0], tfGuess[1], tfGuess[2])), guess: tfGuess },
+        trio:     { amount: trAmount, odds: oddsFromProb(trioProb(trGuess[0], trGuess[1], trGuess[2])),     guess: trGuess }
+      };
+
+      // 賭け金を所持金から引く
+      balance -= totalBet;
+      updateBalanceDisplay();
+
+      // 馬の位置をスタートに戻す(強さ・オッズはそのまま)
+      resetPositions();
+
+      // ボタンを押せないようにする(連打防止)
+      startBtn.disabled = true;
+      refreshBtn.disabled = true;
+
+      // ゴールした順番を入れる配列(着順)
+      // 例: [2, 0, 4, ...] = 1着が馬2、2着が馬0...
+      const ranking = [];
+
+      // 一定時間ごとに馬を少しずつ動かす(これがゲームのループ)
+      raceTimer = setInterval(() => {
+
+        // 馬を1頭ずつ動かす
+        horses.forEach(horse => {
+          // すでにゴールした馬は動かさない
+          if (horse.finished) return;
+
+          // ランダムな速さで進む。強い馬ほど速く進みやすい。
+          // ※ MAX_SPEED を小さくしているのでレースが長く楽しめる
+          const speed = Math.random() * MAX_SPEED * horse.strength;
+          horse.position += speed;
+
+          // 画面上の位置を更新する(楕円コースの上を進める)
+          placeHorse(horse);
+
+          // ゴールに到達したか判定する
+          if (horse.position >= GOAL) {
+            horse.finished = true;
+            // 何番目にゴールしたかを記録(1着、2着...)
+            ranking.push(horse.index);
+            horse.finishOrder = ranking.length;
+          }
+        });
+
+        // 全部の馬がゴールしたらレース終了
+        const allFinished = horses.every(h => h.finished);
+        if (allFinished) {
+          clearInterval(raceTimer);     // タイマーを止める
+          showResult(ranking);          // 結果を表示する
+          startBtn.disabled = false;    // ボタンを再び使えるようにする
+          refreshBtn.disabled = false;  // オッズ引き直しも再び使えるようにする
+        }
+      }, TICK_MS);
+    }
+
+    // ============================================================
+    // ===== 結果を表示する関数 =====
+    //   ranking: ゴールした順の馬の番号(インデックス)の配列
+    // ============================================================
+    function showResult(ranking) {
+      // ----- 1) 着順を表示 -----
+      let html = '';
+      // 1位の馬を大きく表示
+      html += `<div class="winner">🏆 優勝: ${horseNames[ranking[0]]} 🏆</div>`;
+
+      // 全頭の着順を表示
+      html += '<div class="ranking-list">';
+      ranking.forEach((horseIndex, i) => {
+        html += `${i + 1}着: ${horseNames[horseIndex]}<br>`;
+      });
+      html += '</div>';
+
+      // 実際の1〜3着
+      const actual1 = ranking[0];
+      const actual2 = ranking[1];
+      const actual3 = ranking[2];
+
+      // このレースで払い戻された合計金額(集計用)
+      let totalPayout = 0;
+
+      // ----- 2) 3連単の判定 -----
+      // レース開始時に確定した予想・賭け金・オッズを使う
+      const tf = lockedBet.trifecta;
+      const [guess1, guess2, guess3] = tf.guess;
+
+      // 順番通りにすべて一致したら「3連単的中」
+      const trifectaHit =
+        guess1 === actual1 &&
+        guess2 === actual2 &&
+        guess3 === actual3;
+
+      html += '<hr>';
+      html += '<div><strong>【3連単】</strong> ';
+      html += `あなたの予想: ${horseNames[guess1]} → ${horseNames[guess2]} → ${horseNames[guess3]}`;
+      html += ` (賭け金 ${tf.amount.toLocaleString()}円 / オッズ ${tf.odds ? tf.odds.toFixed(1) : '－'}倍)<br>`;
+      if (tf.amount <= 0) {
+        html += '<span class="miss">(賭けていません)</span>';
+      } else if (trifectaHit) {
+        const payout = Math.floor(tf.amount * tf.odds);
+        totalPayout += payout;
+        html += `<span class="hit">🎉 3連単 的中! 払戻し ${payout.toLocaleString()}円!</span>`;
+      } else {
+        html += '<span class="miss">残念!3連単は外れました。</span>';
+      }
+      html += '</div>';
+
+      // ----- 3) 3連複の判定 -----
+      const tr = lockedBet.trio;
+      const trioGuess = tr.guess;
+
+      // 実際の上位3頭(順不同で比べる)
+      const top3 = [actual1, actual2, actual3];
+
+      // 3連複は順番を問わないので、
+      // 「予想3頭がそれぞれ上位3頭に含まれているか」をチェックする。
+      // ただし同じ馬を2回選んでいたら不正解にしたいので、
+      // 重複を除いて3頭そろっているかを確認する。
+      const uniqueGuess = [...new Set(trioGuess)]; // 重複を除く
+
+      // 3頭ともユニーク かつ すべて上位3頭に含まれていればOK
+      const trioHit =
+        uniqueGuess.length === 3 &&
+        uniqueGuess.every(g => top3.includes(g));
+
+      html += '<div style="margin-top:10px;"><strong>【3連複】</strong> ';
+      html += `あなたの予想: ${horseNames[trioGuess[0]]}, ${horseNames[trioGuess[1]]}, ${horseNames[trioGuess[2]]}`;
+      html += ` (賭け金 ${tr.amount.toLocaleString()}円 / オッズ ${tr.odds ? tr.odds.toFixed(1) : '－'}倍)<br>`;
+      if (tr.amount <= 0) {
+        html += '<span class="miss">(賭けていません)</span>';
+      } else if (trioHit) {
+        const payout = Math.floor(tr.amount * tr.odds);
+        totalPayout += payout;
+        html += `<span class="hit">🎉 3連複 的中! 払戻し ${payout.toLocaleString()}円!</span>`;
+      } else if (uniqueGuess.length < 3) {
+        html += '<span class="miss">3連複は同じ馬を重複して選ぶと当たりません。</span>';
+      } else {
+        html += '<span class="miss">残念!3連複は外れました。</span>';
+      }
+      html += '</div>';
+
+      // ----- 4) 払戻しを所持金に反映 -----
+      balance += totalPayout;
+      updateBalanceDisplay();
+
+      const betTotal = tf.amount + tr.amount;
+      const net = totalPayout - betTotal;             // 今回の収支(プラスなら勝ち)
+      const sign = net >= 0 ? '+' : '';
+      html += '<hr>';
+      html += `<div style="margin-top:6px;">💰 払戻し合計: <strong>${totalPayout.toLocaleString()}円</strong>` +
+              ` (収支 ${sign}${net.toLocaleString()}円)<br>` +
+              `現在の所持金: <strong>${balance.toLocaleString()}円</strong></div>`;
+      if (balance <= 0) {
+        html += '<div class="miss" style="margin-top:6px;">所持金がなくなりました…「🔄 新しいオッズ」で仕切り直しできます。</div>';
+      }
+
+      // 完成したHTMLを画面に出す
+      resultDiv.innerHTML = html;
+
+      // ----- 5) ① 結果(所持金・収支)をサーバへ送り、ランキングを更新 -----
+      // サーバありで参加済みのときだけ送られる(ソロ遊びのときは何もしない)。
+      sendResultToServer(balance, net);
+    }
+
+    // ============================================================
+    // ===== スタートボタンの動き =====
+    //   今のオッズ(馬の強さ)のままレースを行う
+    // ============================================================
+    startBtn.addEventListener('click', () => {
+      startRace();   // レース開始!(位置リセット・賭け金処理は中で行う)
+    });
+
+    // ============================================================
+    // ===== 「新しいオッズ」ボタンの動き =====
+    //   馬の強さを引き直してオッズを更新する。
+    //   所持金が尽きていたら、ここで初期金額に戻して仕切り直す。
+    // ============================================================
+    refreshBtn.addEventListener('click', () => {
+      if (balance <= 0) {
+        balance = STARTING_MONEY;
+        updateBalanceDisplay();
+      }
+      prepareRace();
+    });
+
+    // ============================================================
+    // ===== 予想や賭け金が変わったらオッズ表示を更新 =====
+    // ============================================================
+    [bet1stSel, bet2ndSel, bet3rdSel,
+     betTrio1Sel, betTrio2Sel, betTrio3Sel,
+     trifectaAmountInput, trioAmountInput].forEach(el => {
+      el.addEventListener('change', updateBetOdds);
+      el.addEventListener('input', updateBetOdds);
+    });
+
+    // ============================================================
+    // ============================================================
+    // ===== ① QR参加 & 全参加者ランキング(サーバ連携) =====
+    // ============================================================
+    // ============================================================
+    //
+    // 流れ:
+    //   1) ページを開く → サーバに名前を登録(/api/join)して参加者IDをもらう
+    //   2) レースを遊ぶ → 結果(所持金)をサーバへ送る(/api/result)
+    //   3) サーバが全員を所持金順に並べたランキングを返す(/api/ranking)
+    //
+    // ※ サーバ無し(file:// で直接開いた等)のときは、この機能は自動でオフになり、
+    //    今まで通り「ソロ遊び」ができます。
+
+    // 画面の部品を取得
+    const lobbyArea = document.getElementById('lobby-area');
+    const playerNameSpan = document.getElementById('player-name');
+    const changeNameBtn = document.getElementById('change-name-btn');
+    const qrImg = document.getElementById('qr-img');
+    const rankingArea = document.getElementById('ranking-area');
+    const rankingBtn = document.getElementById('ranking-btn');
+    const rankingTableWrap = document.getElementById('ranking-table-wrap');
+    const rankingStatus = document.getElementById('ranking-status');
+
+    // 参加者の状態。サーバありで参加できたら online=true になる。
+    let online = false;
+    let myId = null;     // サーバからもらった参加者ID(例 'p1')
+    let myName = null;   // 表示名
+
+    // ブラウザに保存しておくためのキー(次に開いたとき名前を覚えておく)
+    const STORE_ID = 'keiba_pid';
+    const STORE_NAME = 'keiba_name';
+
+    // ----- サーバに名前を登録して参加する -----
+    //   成功したら online=true にして、ID・名前を覚える。
+    async function joinServer(name) {
+      const res = await fetch('/api/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (!res.ok) throw new Error('join failed');
+      const data = await res.json();   // { id, name }
+      myId = data.id;
+      myName = data.name;
+      online = true;
+      // 次回のために保存
+      localStorage.setItem(STORE_ID, myId);
+      localStorage.setItem(STORE_NAME, myName);
+    }
+
+    // ----- レース結果(所持金・収支)をサーバへ送る -----
+    async function sendResultToServer(balance, net) {
+      if (!online || !myId) return;   // 参加していなければ何もしない
+      try {
+        await fetch('/api/result', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: myId, balance, net })
+        });
+        // 送ったあとは最新ランキングを取り直して表示
+        await loadRanking();
+      } catch (err) {
+        // 通信に失敗しても、ゲーム自体は続けられるようにする
+        console.log('結果の送信に失敗:', err);
+      }
+    }
+
+    // ----- ランキングを取得して表に描く -----
+    async function loadRanking() {
+      if (!online) return;
+      try {
+        const res = await fetch('/api/ranking');
+        const list = await res.json();   // [{ rank, id, name, balance, net }, ...]
+
+        if (!list.length) {
+          rankingTableWrap.innerHTML = '';
+          rankingStatus.textContent = 'まだ参加者がいません。';
+          return;
+        }
+
+        // 1位〜3位にメダルを付ける
+        const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
+        let html = '<table class="ranking-table">';
+        html += '<tr><th>順位</th><th>名前</th><th>所持金</th><th>収支</th></tr>';
+        list.forEach(p => {
+          // 自分の行は色を変えて目立たせる
+          const meClass = (p.id === myId) ? ' class="me"' : '';
+          const medal = medals[p.rank] ? `<span class="rank-medal">${medals[p.rank]}</span> ` : '';
+          const sign = p.net >= 0 ? '+' : '';
+          html += `<tr${meClass}>` +
+                  `<td>${medal}${p.rank}</td>` +
+                  `<td class="name-cell">${escapeHtml(p.name)}</td>` +
+                  `<td>${p.balance.toLocaleString()}円</td>` +
+                  `<td>${sign}${p.net.toLocaleString()}円</td>` +
+                  `</tr>`;
+        });
+        html += '</table>';
+        rankingTableWrap.innerHTML = html;
+        rankingStatus.textContent = `参加者 ${list.length} 人`;
+      } catch (err) {
+        rankingStatus.textContent = 'ランキングの取得に失敗しました。';
+        console.log('ランキング取得エラー:', err);
+      }
+    }
+
+    // 名前などに < > が入っても表示が崩れないようにする(簡易エスケープ)
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ----- 参加まわりの初期化 -----
+    async function initLobby() {
+      // file:// などサーバが無い開き方では、参加機能は使わない(ソロ遊び)
+      if (!location.protocol.startsWith('http')) {
+        return;
+      }
+
+      // 前回の名前を覚えていれば、それを初期値にする
+      const savedName = localStorage.getItem(STORE_NAME) || '';
+      const inputName = prompt('参加者の名前を入力してください(ランキングに表示されます)', savedName);
+      // キャンセルされたら「ななしさん」で参加
+      const name = (inputName && inputName.trim()) ? inputName.trim() : 'ななしさん';
+
+      try {
+        // 毎回 join して新しいIDをもらう(同じ人でも名前を変えて再参加できる)
+        await joinServer(name);
+
+        // 参加できたので、参加パネルとランキングを表示する
+        playerNameSpan.textContent = myName;
+        lobbyArea.style.display = 'flex';
+        rankingArea.style.display = 'block';
+        await loadRanking();
+      } catch (err) {
+        // サーバに繋がらない → ソロ遊びとして続行(パネルは出さない)
+        console.log('サーバに参加できませんでした。ソロモードで遊びます。', err);
+        online = false;
+      }
+    }
+
+    // QR画像が読み込めない(サーバ無し等)ときはQR欄を隠す
+    if (qrImg) {
+      qrImg.addEventListener('error', () => {
+        const qrArea = document.getElementById('qr-area');
+        if (qrArea) qrArea.style.display = 'none';
+      });
+    }
+
+    // 「名前を変える」ボタン → 名前を覚えている情報を消して、もう一度参加し直す
+    changeNameBtn.addEventListener('click', () => {
+      localStorage.removeItem(STORE_ID);
+      localStorage.removeItem(STORE_NAME);
+      myId = null;
+      online = false;
+      initLobby();
+    });
+
+    // 「ランキングを更新」ボタン
+    rankingBtn.addEventListener('click', loadRanking);
+
+    // ============================================================
+    // ===== 最初にページが開かれたときの処理 =====
+    // ============================================================
+    fillBetSelects();        // 予想セレクトボックスを馬の名前で埋める
+    updateBalanceDisplay();  // 所持金を表示
+    prepareRace();           // 馬・強さ・オッズを用意してレース場を作る
+    initLobby();             // ① サーバに参加(できればランキングを表示)
+  </script>
+</body>
+</html>

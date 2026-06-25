@@ -1,0 +1,11 @@
+# 依存パッケージ(デプロイ先で npm install されるのでアップしない)
+node_modules/
+
+# ログ・一時ファイル
+*.log
+tunnel.log
+server.log
+
+# OS / エディタ
+.DS_Store
+Thumbs.db

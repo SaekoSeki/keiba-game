@@ -1,0 +1,11 @@
+# Render 用の設定(Blueprint)。
+# Render のダッシュボードでリポジトリを接続すると、この内容で自動デプロイされます。
+# 手動(New > Web Service)で作る場合は、Build=npm install / Start=npm start を選べば同じです。
+services:
+  - type: web
+    name: keiba-game          # ← 公開URLの一部になる(例: keiba-game.onrender.com)。重複時は変更を
+    runtime: node
+    plan: free                # 無料プラン(約15分無アクセスでスリープ。メモリ保持のためランキングはリセット)
+    buildCommand: npm install
+    startCommand: npm start
+    # PORT は Render が自動で渡します(app.js は process.env.PORT を見るので対応済み)
